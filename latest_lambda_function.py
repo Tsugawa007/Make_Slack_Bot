@@ -13,6 +13,7 @@ ssl_context = ssl.create_default_context(cafile=certifi.where())
 client = WebClient(token=os.environ.get('OAuthToken'), ssl=ssl_context)
 
 def respond(res="Hello"):
+    #Post the content 
     ret = {
         'statusCode': '200',
         'body': json.dumps(res, ensure_ascii=False),
@@ -26,6 +27,7 @@ def respond(res="Hello"):
 
 def public_image(file_id):
     try:
+        #Publicize the image to the channel using slack SDK
         result = client.files_sharedPublicURL(
             token=os.environ.get('UserToken'),
             file=file_id,
@@ -36,65 +38,86 @@ def public_image(file_id):
     except SlackApiError as e:
         LOGGER.info(f"Error public file: {e}")
 
-def post_slack(channel,url=None):
-    #url="https://ferret.akamaized.net/uploads/article/6845/eyecatch/default-95e77d8922603c5a64085258c0cc3f96.png"
-
+def post_slack(channel,url=None,message=None):
+    #Ignore the ssl authentication
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
+    
+    #Output the full url
     LOGGER.info(f"Full url: {url}")
-    with urllib.request.urlopen(url,context=ctx) as web_file, open('/tmp/NASA3.jpg', 'wb') as local_file:
+    
+    #Get the content of the image from the given url
+    with urllib.request.urlopen(url,context=ctx) as web_file, open('/tmp/test.jpg', 'wb') as local_file:
         local_file.write(web_file.read())
     
-
-    #ssl_context = ssl.create_default_context(cafile=certifi.where())
-    #client = WebClient(token=os.environ.get('OAuthToken'), ssl=ssl_context)
         
     try:
+        #Upload the image to the channel using slack SDK
         result = client.files_upload(
            channels=channel,
-           initial_comment=f"Post Same Image from AWS!!",
-           file="/tmp/NASA3.jpg",
+           initial_comment=message,
+           file="/tmp/test.jpg",
            filetype="jpg",
         )
+        
+        #Output the success log
         LOGGER.info(f"Result post slack: {result}")
     except SlackApiError as e:
+        #Output the false log
         LOGGER.info(f"Error uploading file: {e}")
         
 def make_image_url(team_id,file_id,file_name,pre_url):
+    #Shape the url
     ind = pre_url.rfind('-')
     pub_secret = pre_url[ind+1:]
-    #ind_1 = pre_url.rfind('/')
-    #pre_pub_secret = pre_url[:ind_1]
-    #ind_2 = pre_pub_secret.rfind('-')
-    #pub_secret = pre_pub_secret[ind_2+1:]
     url = f"https://files.slack.com/files-pri/{team_id}-{file_id}/{file_name}?pub_secret={pub_secret}"
     return url
     
 def lambda_handler(event, context):
+    #Output received the event
     LOGGER.info(f"Received event: {json.dumps(event)}")
+    
     body = {}
+    #Verify the challeng authentication
     if event.get('challenge'):
         return event.get('challenge')
+        
+    #Get the body of the event
     if event.get('body'):
         body = json.loads(event['body'])
+        
+    #Check slack signature
     if event.get('headers', {}).get('X-Slack-Signature'):
         LOGGER.info(f"Passed X-Slack-Signature!: {json.dumps(event)}")
         channel = body['event']['channel']
+        
+        #Output your channel ID
         LOGGER.info(f"channel!: {channel}")
-        if body['event']['files']:
+        #If get
+        try:
             #image_url
-            #LOGGER.info(f"Got file!: {json.dumps(body['event']['files'][0]['thumb_360'])}")
             team_id = body['team_id']
             file_id = body['event']['files'][0]['id']
             file_name =  body['event']['files'][0]['name']
             pre_url = body['event']['files'][0]['permalink_public']
+            
+            #Make the image URL
             url = make_image_url(team_id,file_id,file_name,pre_url)
+            
+            #Publicize the url of the image
             public_image(file_id)
+            
+            #Make the comment of the image if success
+            message = "Post Same Image from AWS!!"
+            
             LOGGER.info(f"team_id: {team_id} file_id: {file_id} file_name: {file_name}")
-        else:
-            #text
-            text_args = body['event']['text'].split(' ')
-            ans = ' '.join(text_args[1:])
-        post_slack(channel,url)
+        except KeyError as e:
+            #This url is used by posting error messages
+            url = "https://4.bp.blogspot.com/-97ehmgQAia0/VZt5RUaiYsI/AAAAAAAAu24/yrwP694zWZA/s800/computer_error_bluescreen.png"
+            #Make the comment of the image  if false
+            message = "You can post only the image file!!"
+        #Post the image to the channel
+        post_slack(channel,url,message)
+        
     return respond(body)
