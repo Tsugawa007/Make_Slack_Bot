@@ -101,7 +101,11 @@ def lambda_handler(event, context):
             file_id = body['event']['files'][0]['id']
             file_name =  body['event']['files'][0]['name']
             pre_url = body['event']['files'][0]['permalink_public']
-            
+
+            #Upload from IOSsmartphone
+            if "iOS" in file_name:
+                file_name = os.environ.get('IphoneName')
+                
             #Make the image URL
             url = make_image_url(team_id,file_id,file_name,pre_url)
             
@@ -111,10 +115,12 @@ def lambda_handler(event, context):
             #Make the comment of the image if success
             message = "Post Same Image from AWS!!"
             
+
+            
             LOGGER.info(f"team_id: {team_id} file_id: {file_id} file_name: {file_name}")
         except KeyError as e:
             #This url is used by posting error messages
-            url = "https://4.bp.blogspot.com/-97ehmgQAia0/VZt5RUaiYsI/AAAAAAAAu24/yrwP694zWZA/s800/computer_error_bluescreen.png"
+            url = os.environ.get('BadURL')
             #Make the comment of the image  if false
             message = "You can post only the image file!!"
         #Post the image to the channel
