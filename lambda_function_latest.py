@@ -46,7 +46,11 @@ def judge_back_symbol(symbol):
     if "#101" in symbol:
         flag = True
         flag_3 = True
-        symbol = "#101"    
+        symbol = "#101"  
+    if "#102" in symbol:
+        flag = True
+        flag_3 = 2
+        symbol = "#102"
     return flag,symbol,flag_3
 
 def judge_front_symbol(symbol):
@@ -96,7 +100,7 @@ def content_process(datalist,new_content = ""):
             front_symbol = datalist[i-6:i]
             back_symbol = datalist[i+1:i+5]
 
-            if flag_3:
+            if flag_3 != 0:
                 flag = False
                 flag_2  = False
             else:
@@ -120,8 +124,10 @@ def content_process(datalist,new_content = ""):
                     flag_2 = True
                 if flag_2:
                     new_content += "    "
-            if flag_3:
-                indent_cnt =  0
+                if flag_3 != 0:            
+                    if flag_3 == 1: indent_cnt = 0
+                    else:  
+                        indent_cnt -= 1
             new_content += "    " * indent_cnt
     return new_content
 
@@ -133,7 +139,7 @@ def load_content(content):
         image_context={'language_hints': ['ja']}
     )
     response_content = proto.Message.to_json(response)
-    LOGGER.info(f"Vision_API:{response_content}")
+    #LOGGER.info(f"Vision_API:{response_content}")
     text_json = json.loads(response_content)
     datalist = text_json["textAnnotations"][0]["description"]
     new_content = content_process(datalist)
@@ -148,11 +154,11 @@ def load_content(content):
     with open('/tmp/'+create_file_name, 'wb') as new_content:
             content = image_file.read()
     '''
-    LOGGER.info(f"New Content:{new_content}")
+    #LOGGER.info(f"New Content:{new_content}")
     f = open('/tmp/'+ create_file_name, 'w')
     f.writelines(new_content)
     f.close()
-    LOGGER.info("You created a code file from the screenshot of the code successfully!!")
+    #LOGGER.info("You created a code file from the screenshot of the code successfully!!")
     return create_file_name
     
 
@@ -165,7 +171,7 @@ def respond(res="Hello"):
             #'Content-Type': 'application/json',
         },
     }
-    LOGGER.info(f"Return: {ret}")
+    #LOGGER.info(f"Return: {ret}")
     return ret
 
 
@@ -177,7 +183,7 @@ def public_image(file_id):
             file=file_id,
         )
         # Log the result
-        LOGGER.info(f"Result public image: {result}")
+        #LOGGER.info(f"Result public image: {result}")
 
     except SlackApiError as e:
         LOGGER.info(f"Error public file: {e}")
@@ -189,7 +195,7 @@ def post_image_slack(channel,url=None,message=None,flag=False):
     ctx.verify_mode = ssl.CERT_NONE
     
     #Output the full url
-    LOGGER.info(f"Full url: {url}")
+    #LOGGER.info(f"Full url: {url}")
     
     #Get the content of the image from the given url
     with urllib.request.urlopen(url,context=ctx) as web_file, open('/tmp/test.jpg', 'wb') as local_file:
@@ -199,10 +205,10 @@ def post_image_slack(channel,url=None,message=None,flag=False):
         # Loads the image into memory
         with open('/tmp/test.jpg', 'rb') as image_file:
             content = image_file.read()
-            LOGGER.info(f"The content using gcp api: {content}")
+            #LOGGER.info(f"The content using gcp api: {content}")
         file_path="/tmp/"+load_content(content)
         file_type="python"
-        LOGGER.info(f"Sceenshot file path: {file_path}")
+        #LOGGER.info(f"Sceenshot file path: {file_path}")
         
         
     else:
@@ -221,7 +227,7 @@ def post_image_slack(channel,url=None,message=None,flag=False):
         )
         
         #Output the success log
-        LOGGER.info(f"Result post slack: {result}")
+        #LOGGER.info(f"Result post slack: {result}")
     except SlackApiError as e:
         #Output the false log
         LOGGER.info(f"Error uploading file: {e}")
@@ -239,7 +245,7 @@ def lambda_handler(event, context):
     flag=False
 
     #Output received the event
-    LOGGER.info(f"Received event: {json.dumps(event)}")
+    #LOGGER.info(f"Received event: {json.dumps(event)}")
 
     body = {}
     #Verify the challeng authentication
@@ -252,11 +258,11 @@ def lambda_handler(event, context):
         
     #Check slack signature
     if event.get('headers', {}).get('X-Slack-Signature'):
-        LOGGER.info(f"Passed X-Slack-Signature!: {json.dumps(event)}")
+        #LOGGER.info(f"Passed X-Slack-Signature!: {json.dumps(event)}")
 
         try:
             channel = body['event']['channel']
-            LOGGER.info(f"channel!: {channel}")
+            #LOGGER.info(f"channel!: {channel}")
             
             #image_url
             team_id = body['team_id']
@@ -280,7 +286,7 @@ def lambda_handler(event, context):
             #post_image_slack(channel,url,message)
             #return respond(body)
             
-            LOGGER.info(f"team_id: {team_id} file_id: {file_id} file_name: {file_name}")
+            #LOGGER.info(f"team_id: {team_id} file_id: {file_id} file_name: {file_name}")
             flag=True
             post_image_slack(channel,url,message,flag)
             return respond(body)
@@ -291,4 +297,4 @@ def lambda_handler(event, context):
             return respond(body)
         
         
-    return respond(body)
+    #return respond(body)
