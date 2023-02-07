@@ -24,7 +24,7 @@ client = WebClient(token=os.environ.get('OAuthToken'), ssl=ssl_context)
 
 def judge_back_symbol(symbol):
     flag = False
-    flag_3 = False
+    flag_3 = 0
     if "class" in symbol:
         flag = True
         symbol = "class"
@@ -34,6 +34,9 @@ def judge_back_symbol(symbol):
     if "for" in symbol:
         flag = True
         symbol = "for"
+    if "while" in symbol:
+        flag = True
+        symbol = "while"
     if "if" in symbol:
         flag = True
         symbol = "if"
@@ -45,7 +48,7 @@ def judge_back_symbol(symbol):
         symbol = "else"
     if "#101" in symbol:
         flag = True
-        flag_3 = True
+        flag_3 = 1
         symbol = "#101"  
     if "#102" in symbol:
         flag = True
@@ -67,74 +70,69 @@ def judge_indent(symbol,symbols,symbol_nums):
             return  symbol_nums[-1]
         if symbol == "if" and symbols[-2] == "else":
             return symbol_nums[-1] -1
-    '''
-    if symbol == "elif" and symbols[-2] == "if":
-        return  symbol_nums[-1]
-    if symbol == "else" and symbols[-2] == "if":
-        return  symbol_nums[-1]
-    if symbol == "else" and symbols[-2] == "elif":
-        return  symbol_nums[-1]
-    if symbol == "if" and symbols[-2] == "else":
-        return symbol_nums[-1] -1
-    '''
     if symbol == "def":
         if len(symbol_nums) > symbols.index("def"):
             return symbol_nums[symbols.index("def")]
-
     return -1
 
-def content_process(datalist,new_content = ""):
+def content_process(datalist):
     indent_cnt = 0
     symbols = []
     symbol_nums = []
-    front_flag = False
+    former_indent = 0
+    former_is_symbol = False
     flag_2 = False
-    flag_3 = False
-    dell_ind = ""
+    flag_3 = 0
+    new_content = ""
     flag,symbol,flag_3 = judge_back_symbol(datalist[:5])
     if flag:
         symbols.append(symbol)
         symbol_nums.append(1)
 
     for i in range(len(datalist)):
-        if "print" in datalist[i+1:i+7] and datalist[i+6] == " ":
-            dell_ind = i+6
-        
-        if i != dell_ind:
-            new_content += datalist[i]    
-    
+        new_content += datalist[i] 
         if datalist[i] == '\n':            
             front_symbol = datalist[i-6:i]
             back_symbol = datalist[i+1:i+5]
-
+            
             if flag_3 != 0:
                 flag = False
                 flag_2  = False
             else:
                 flag,symbol,flag_3 = judge_back_symbol(back_symbol)
-
+            
             if flag :
                 symbols.append(symbol)
-
                 tmp_cnt= judge_indent(symbol,symbols,symbol_nums)
+                LOGGER.info(f"symbol:{symbol,symbols,symbol_nums,tmp_cnt,former_indent}")
                 if tmp_cnt != -1:
                     indent_cnt = tmp_cnt
                 else:
                     if len(symbol_nums) == 0:
-                        indent_cnt = 0
+                        indent_cnt = former_indent
                     else:
-                        indent_cnt += 1
+                        if former_is_symbol:
+                            indent_cnt += 1
+                        else:
+                            indent_cnt = former_indent
+                    
                 symbol_nums.append(indent_cnt)
+                former_is_symbol = True
             else:
                 if judge_front_symbol(front_symbol):
                     flag_2 = True
-                if flag_2:
-                    new_content += "    "
+                    indent_cnt += 1
+                else:
+                    indent_cnt = former_indent
+                    
                 if flag_3 != 0:            
                     if flag_3 == 1: indent_cnt = 0
-                    else:  
+                    else:
                         indent_cnt -= 1
+                former_is_symbol = False
             new_content += "    " * indent_cnt
+            #LOGGER.info(f"former_indent:{indent_cnt,datalist[i+1:i+5]}")
+            former_indent = indent_cnt
     return new_content
 
 def load_content(content):
@@ -142,7 +140,7 @@ def load_content(content):
     # Performs label detection on the image file
     response =  client_vision_api.document_text_detection(
         image=image,
-        image_context={'language_hints': ['ja']}
+        image_context={'language_hints': ['ja','en']}
     )
     response_content = proto.Message.to_json(response)
     LOGGER.info(f"Vision_API:{response_content}")
@@ -152,7 +150,6 @@ def load_content(content):
     if len(datalist_before) <= 10:
         return "101.jpg"
     else:
-        #datalist = text_json["textAnnotations"][0]["description"]
         datalist = datalist_before[0]["description"]
         new_content = content_process(datalist)
         t_delta = datetime.timedelta(hours=9)
@@ -161,11 +158,9 @@ def load_content(content):
         # Format: YYYYMMDDhhmmss
         now_time = now.strftime('%Y%m%d%H%M%S')
         create_file_name = "test" + str(now_time) + ".py"
-        #LOGGER.info(f"New Content:{new_content}")
         f = open('/tmp/'+ create_file_name, 'w')
         f.writelines(new_content)
         f.close()
-        #LOGGER.info("You created a code file from the screenshot of the code successfully!!")
         return create_file_name
 
     
@@ -305,4 +300,3 @@ def lambda_handler(event, context):
             LOGGER.info("KeyError101")
             return respond(body)
     time.sleep(5)
-
