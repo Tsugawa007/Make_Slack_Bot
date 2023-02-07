@@ -81,7 +81,6 @@ def content_process(datalist):
     symbol_nums = []
     former_indent = 0
     former_is_symbol = False
-    flag_2 = False
     flag_3 = 0
     new_content = ""
     flag,symbol,flag_3 = judge_back_symbol(datalist[:5])
@@ -120,7 +119,6 @@ def content_process(datalist):
                 former_is_symbol = True
             else:
                 if judge_front_symbol(front_symbol):
-                    flag_2 = True
                     indent_cnt += 1
                 else:
                     indent_cnt = former_indent
