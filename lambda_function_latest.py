@@ -96,7 +96,6 @@ def content_process(datalist):
             
             if flag_3 != 0:
                 flag = False
-                flag_2  = False
             else:
                 flag,symbol,flag_3 = judge_back_symbol(back_symbol)
             
