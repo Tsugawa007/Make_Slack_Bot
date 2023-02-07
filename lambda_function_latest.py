@@ -106,15 +106,16 @@ def content_process(datalist):
                     if len(symbol_nums) == 0:
                         indent_cnt = former_indent
                     else:
-　　　　　　　　　　　　　　　　if flag_3 != 0:            
-                            if flag_3 == 1: 
-                                indent_cnt = 0
-                            else:
-                                indent_cnt = former_indent
                         if former_is_symbol:
                             indent_cnt += 1
                         else:
-                            indent_cnt = former_indent
+                            if flag_3 == 2:   
+　　　　　　　　　　　　　　　　　　　　　indent_cnt = former_indent - 1
+                            elif flag_3 == 1: 
+                                indent_cnt = 0
+                            else:
+                                indent_cnt = former_indent
+
                     
                 symbol_nums.append(indent_cnt)
                 former_is_symbol = True
