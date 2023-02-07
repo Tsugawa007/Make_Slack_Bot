@@ -94,10 +94,7 @@ def content_process(datalist):
             front_symbol = datalist[i-6:i]
             back_symbol = datalist[i+1:i+5]
             
-            if flag_3 != 0:
-                flag = False
-            else:
-                flag,symbol,flag_3 = judge_back_symbol(back_symbol)
+            flag,symbol,flag_3 = judge_back_symbol(back_symbol)
             
             if flag :
                 symbols.append(symbol)
@@ -109,6 +106,11 @@ def content_process(datalist):
                     if len(symbol_nums) == 0:
                         indent_cnt = former_indent
                     else:
+　　　　　　　　　　　　　　　　if flag_3 != 0:            
+                            if flag_3 == 1: 
+                                indent_cnt = 0
+                            else:
+                                indent_cnt = former_indent
                         if former_is_symbol:
                             indent_cnt += 1
                         else:
@@ -121,11 +123,6 @@ def content_process(datalist):
                     indent_cnt += 1
                 else:
                     indent_cnt = former_indent
-                    
-                if flag_3 != 0:            
-                    if flag_3 == 1: indent_cnt = 0
-                    else:
-                        indent_cnt -= 1
                 former_is_symbol = False
             new_content += "    " * indent_cnt
             #LOGGER.info(f"former_indent:{indent_cnt,datalist[i+1:i+5]}")
