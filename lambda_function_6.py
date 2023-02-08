@@ -6,13 +6,178 @@ import ssl
 import certifi
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+import proto
+import datetime
+from google.cloud import vision
+import time
 
+# Instantiates a client
+client_vision_api = vision.ImageAnnotatorClient()
 
-
+#Setting Log 
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.INFO)
+
+#Setting SSL  authentication
 ssl_context = ssl.create_default_context(cafile=certifi.where())
 client = WebClient(token=os.environ.get('OAuthToken'), ssl=ssl_context)
+
+def judge_back_symbol(symbol):
+    flag = False
+    flag_3 = 0
+    if "class" in symbol:
+        flag = True
+        symbol = "class"
+    if "def" in symbol:
+        flag = True
+        symbol = "def"
+    if "for" in symbol:
+        flag = True
+        symbol = "for"
+    if "while" in symbol:
+        flag = True
+        symbol = "while"
+    if "if" in symbol:
+        flag = True
+        symbol = "if"
+    if "elif" in symbol:
+        flag = True
+        symbol = "elif"
+    if "else" in symbol:
+        flag = True
+        symbol = "else"
+    if "#101" in symbol:
+        flag = True
+        flag_3 = 1
+        symbol = "#101"  
+    if "#102" in symbol:
+        flag = True
+        flag_3 = 2
+        symbol = "#102"
+    return flag,symbol,flag_3
+
+def judge_front_symbol(symbol):
+    if ':' in symbol: return True
+    else: return False
+
+def judge_indent(symbol,symbols,symbol_nums):
+    if len(symbols) >= 2:
+        if symbol == "elif" and symbols[-2] == "if":
+            return  symbol_nums[-1]
+        if symbol == "else" and symbols[-2] == "if":
+            return  symbol_nums[-1]
+        if symbol == "else" and symbols[-2] == "elif":
+            return  symbol_nums[-1]
+        if symbol == "if" and symbols[-2] == "else":
+            return symbol_nums[-1] -1
+    if symbol == "def":
+        if len(symbol_nums) > symbols.index("def"):
+            return symbol_nums[symbols.index("def")]
+    return -1
+
+def content_process(datalist):
+    indent_cnt = 0
+    symbols = []
+    symbol_nums = []
+    former_indent = 0
+    former_is_symbol = False
+    flag_2 = False
+    flag_3 = 0
+    new_content = ""
+    dell_ind = ""
+    flag,symbol,flag_3 = judge_back_symbol(datalist[:5])
+    if flag:
+        symbols.append(symbol)
+        symbol_nums.append(1)
+        former_is_symbol = True
+
+    for i in range(len(datalist)):
+        if "print" in datalist[i+1:i+7] and datalist[i+6] == " ":
+            dell_ind = i+6
+            
+        if i != dell_ind:
+            new_content += datalist[i]   
+        #new_content += datalist[i] 
+        if datalist[i] == '\n':            
+            front_symbol = datalist[i-6:i]
+            back_symbol = datalist[i+1:i+5]
+            
+            if flag_3 != 0:
+                flag = False
+                flag_2  = False
+            else:
+                if i != 0:
+                    flag,symbol,flag_3 = judge_back_symbol(back_symbol)
+            
+            if flag :
+                symbols.append(symbol)
+                tmp_cnt= judge_indent(symbol,symbols,symbol_nums)
+                #LOGGER.info(f"symbol:{symbol},symbol_nums:{symbol_nums}")
+                if tmp_cnt != -1:
+                    indent_cnt = tmp_cnt
+                else:
+                    if len(symbol_nums) == 0:
+                        indent_cnt = former_indent
+                    else:
+                        LOGGER.info(f"symbol:{symbol},former_is_symbol:{former_is_symbol}")
+                        if former_is_symbol:
+                            indent_cnt += 1
+                        else:
+                            indent_cnt = former_indent
+                           
+                symbol_nums.append(indent_cnt)
+                former_is_symbol = True
+                #LOGGER.info(f"symbol:{symbol,former_is_symbol}")
+            else:
+                if judge_front_symbol(front_symbol):
+                    flag_2 = True
+                    indent_cnt += 1
+                else:
+                    indent_cnt = former_indent
+                    
+                if flag_3 != 0:            
+                    if flag_3 == 1: 
+                        indent_cnt = 0
+                        LOGGER.info(f"symbol1:{symbol,former_is_symbol}")
+                    else:
+                        indent_cnt -= 1
+                        LOGGER.info(f"symbol2:{symbol,former_is_symbol}")
+                former_is_symbol = False
+            new_content += "    " * indent_cnt
+            #LOGGER.info(f"former_indent:{indent_cnt,datalist[i+1:i+5]}")
+            former_indent = indent_cnt
+    return new_content
+
+def load_content(content):
+    image = vision.Image(content=content)
+    # Performs label detection on the image file
+    response =  client_vision_api.document_text_detection(
+        image=image,
+        image_context={'language_hints': ['ja','en']}
+    )
+    response_content = proto.Message.to_json(response)
+    LOGGER.info(f"Vision_API:{response_content}")
+    text_json = json.loads(response_content)
+    datalist_before = text_json["textAnnotations"]
+    LOGGER.info(f"datalist_before_length:{len(datalist_before)}")
+    if len(datalist_before) <= 10:
+        return "101.jpg"
+    else:
+        datalist = datalist_before[0]["description"]
+        new_content = content_process(datalist)
+        t_delta = datetime.timedelta(hours=9)
+        JST = datetime.timezone(t_delta, 'JST')
+        now = datetime.datetime.now(JST)
+        # Format: YYYYMMDDhhmmss
+        now_time = now.strftime('%Y%m%d%H%M%S')
+        create_file_name = "test" + str(now_time) + ".py"
+        f = open('/tmp/'+ create_file_name, 'w')
+        f.writelines(new_content)
+        f.close()
+        return create_file_name
+
+    
+
 
 def respond(res="Hello"):
     #Post the content 
@@ -23,7 +188,7 @@ def respond(res="Hello"):
             #'Content-Type': 'application/json',
         },
     }
-    LOGGER.info(f"Return: {ret}")
+    #LOGGER.info(f"Return: {ret}")
     return ret
 
 
@@ -35,32 +200,52 @@ def public_image(file_id):
             file=file_id,
         )
         # Log the result
-        LOGGER.info(f"Result public image: {result}")
+        #LOGGER.info(f"Result public image: {result}")
 
     except SlackApiError as e:
         LOGGER.info(f"Error public file: {e}")
 
-def post_image_slack(channel,url=None,message=None):
+def post_image_slack(channel,url=None,message=None,flag=False):
     #Ignore the ssl authentication
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     
     #Output the full url
-    LOGGER.info(f"Full url: {url}")
+    #LOGGER.info(f"Full url: {url}")
     
     #Get the content of the image from the given url
     with urllib.request.urlopen(url,context=ctx) as web_file, open('/tmp/test.jpg', 'wb') as local_file:
         local_file.write(web_file.read())
     
+    if flag:
+        # Loads the image into memory
+        with open('/tmp/test.jpg', 'rb') as image_file:
+            content = image_file.read()
+            #LOGGER.info(f"The content using gcp api: {content}")
+            file_path="/tmp/"+load_content(content)
+            LOGGER.info(f"File Path: {file_path}")
+            
+            if file_path == "/tmp/101.jpg":
+                file_type="jpg"
+                file_path="/tmp/test.jpg"
+                message = " You can post only a screenshot of a code!!"
+            else:
+                file_type="python"
+            #LOGGER.info(f"Sceenshot file path: {file_path}")
+
+    else:
+        file_path="/tmp/test.jpg"
+        file_type="jpg"
+        LOGGER.info(f"Failed  path: {file_path}")
         
     try:
         #Upload the image to the channel using slack SDK
         result = client.files_upload(
            channels=channel,
            initial_comment=message,
-           file="/tmp/test.jpg",
-           filetype="jpg",
+           file=file_path,
+           filetype=file_type,
         )
         
         #Output the success log
@@ -68,30 +253,7 @@ def post_image_slack(channel,url=None,message=None):
     except SlackApiError as e:
         #Output the false log
         LOGGER.info(f"Error uploading file: {e}")
-
-def post_message_slack(channel, message):
-    response = client.chat_postMessage(
-    channel=channel,
-    text=message,
-    )
-    LOGGER.info(f"Result post slack: {result}")
-    '''
-    headers = {
-        'Content-Type': 'application/json; charset=UTF-8',
-        "Authorization": f"Bearer {os.environ.get('OAuthToken')}",
-    }
-    url = "https://slack.com/api/chat.postMessage"
-    payload = {
-        'text': message,
-        "token": os.environ.get('PostToken'),
-        "channel": channel,
-    }
-    LOGGER.info(f"Header: {headers} Payload: {payload}")
-    res = requests.post(
-        url, data=json.dumps(payload).encode("utf-8"), headers=headers)
-    LOGGER.info(f"status: {res.status_code} content: {res.content}")
-     '''
-        
+       
 def make_image_url(team_id,file_id,file_name,pre_url):
     #Shape the url
     ind = pre_url.rfind('-')
@@ -100,11 +262,15 @@ def make_image_url(team_id,file_id,file_name,pre_url):
     return url
     
 def lambda_handler(event, context):
-    #Output received the event
-    LOGGER.info(f"Received event: {json.dumps(event)}")
-    
+    #Setting  variables
+    flag = False
     body = {}
-    #Verify the challeng authentication
+    channel=""
+
+    #Output received the event
+    #LOGGER.info(f"Received event: {json.dumps(event)}")
+
+    #Verify the challenge authentication
     if event.get('challenge'):
         return event.get('challenge')
         
@@ -115,20 +281,15 @@ def lambda_handler(event, context):
     #Check slack signature
     if event.get('headers', {}).get('X-Slack-Signature'):
         LOGGER.info(f"Passed X-Slack-Signature!: {json.dumps(event)}")
-        #channel = 'C03MVHHLUF9'
         try:
             channel = body['event']['channel']
-            LOGGER.info(f"channel!: {channel}")
+            #LOGGER.info(f"channel!: {channel}")
             
-            #image_url
+            #Setting the variables about image_url
             team_id = body['team_id']
             file_id = body['event']['files'][0]['id']
             file_name =  body['event']['files'][0]['name']
             pre_url = body['event']['files'][0]['permalink_public']
-
-            #Upload from IOSsmartphone
-            if "iOS" in file_name:
-                file_name = os.environ.get('IphoneName')
                 
             #Make the image URL
             url = make_image_url(team_id,file_id,file_name,pre_url)
@@ -137,19 +298,19 @@ def lambda_handler(event, context):
             public_image(file_id)
             
             #Make the comment of the image if success
-            message = "Post Same Image from AWS!!"
-            
-            #post_image_slack(channel,url,message)
-            #return respond(body)
+            message = "Make a code file sucessfully from AWS!!"
             
             LOGGER.info(f"team_id: {team_id} file_id: {file_id} file_name: {file_name}")
-            post_image_slack(channel,url,message)
+            flag=True
+            post_image_slack(channel,url,message,flag)
             return respond(body)
+
         except KeyError as e:
-            message = "You can post only the image file!!"
+            LOGGER.info("KeyError_Begin")
+            message = " You can post only a screenshot of a code!!"
             url = os.environ.get('BadURL')
-            post_image_slack(channel,url,message)
+            post_image_slack(channel,url,message,flag)
+            LOGGER.info("KeyError101")
             return respond(body)
-        
-        
-    return respond(body)
+    time.sleep(5)
+
