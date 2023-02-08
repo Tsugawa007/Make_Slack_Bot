@@ -46,19 +46,28 @@ def judge_back_symbol(symbol):
     if "else" in symbol:
         flag = True
         symbol = "else"
-    if "#101" in symbol:
+    if "#" in symbol and  "101" in symbol:
         flag = True
         flag_3 = 1
         symbol = "#101"  
-    if "#102" in symbol:
+    if "#" in symbol and  "102" in symbol:
         flag = True
         flag_3 = 2
         symbol = "#102"
     return flag,symbol,flag_3
 
 def judge_front_symbol(symbol):
-    if ':' in symbol: return True
-    else: return False
+    flag = False
+    if ':' in symbol:
+        if "class" in symbol[:6]:flag=True
+        if "def" in symbol[:6]:flag=True
+        if "for" in symbol[:6]:flag=True
+        if "while" in symbol[:6]:flag=True
+        if "if" in symbol[:6]:flag=True
+        if "elif" in symbol[:6]:flag=True
+        if "else" in symbol[:6]:flag=True
+    return flag
+
 
 def judge_indent(symbol,symbols,symbol_nums):
     if len(symbols) >= 2:
@@ -73,6 +82,9 @@ def judge_indent(symbol,symbols,symbol_nums):
     if symbol == "def":
         if len(symbol_nums) > symbols.index("def"):
             return symbol_nums[symbols.index("def")]
+    if symbol == "class":
+        if len(symbol_nums) > symbols.index("class"):
+            return symbol_nums[symbols.index("class")]
     return -1
 
 def content_process(datalist):
@@ -82,52 +94,68 @@ def content_process(datalist):
     former_indent = 0
     former_is_symbol = False
     flag_3 = 0
+    flag_4 = False
+    former_flag_3 = False
+    former_flag_3_cnt = 0
     new_content = ""
+    fomer_row_ind = 0
     flag,symbol,flag_3 = judge_back_symbol(datalist[:5])
     if flag:
         symbols.append(symbol)
         symbol_nums.append(1)
+        former_is_symbol = True
 
     for i in range(len(datalist)):
         new_content += datalist[i] 
-        if datalist[i] == '\n':            
-            front_symbol = datalist[i-6:i]
-            back_symbol = datalist[i+1:i+5]
-            
+        if datalist[i] == '\n':    
+            front_symbol = datalist[fomer_row_ind:i]
+            back_symbol = datalist[i+1:i+6]
             flag,symbol,flag_3 = judge_back_symbol(back_symbol)
-            
             if flag :
                 symbols.append(symbol)
-                tmp_cnt= judge_indent(symbol,symbols,symbol_nums)
-                LOGGER.info(f"symbol:{symbol,symbols,symbol_nums,tmp_cnt,former_indent}")
-                if tmp_cnt != -1:
-                    indent_cnt = tmp_cnt
+                if len(symbol_nums) == 0:
+                    indent_cnt = former_indent
                 else:
-                    if len(symbol_nums) == 0:
-                        indent_cnt = former_indent
-                    else:
-                        if former_is_symbol:
-                            indent_cnt += 1
+                    if former_is_symbol:
+                        if former_flag_3:
+                            indent_cnt = former_indent
                         else:
-                            if flag_3 == 2:   
-　　　　　　　　　　　　　　　　　　　　　indent_cnt = former_indent - 1
-                            elif flag_3 == 1: 
-                                indent_cnt = 0
+                            indent_cnt += 1
+                    else:
+                        if flag_3 == 2:
+                            indent_cnt = former_indent - 1
+                            former_flag_3 = True
+                            former_flag_3_cnt = 0
+                        elif flag_3 == 1: 
+                            indent_cnt = 0
+                        else:
+                            tmp_cnt= judge_indent(symbol,symbols,symbol_nums)
+                            if tmp_cnt != -1:
+                                indent_cnt = tmp_cnt
                             else:
                                 indent_cnt = former_indent
-
-                    
                 symbol_nums.append(indent_cnt)
                 former_is_symbol = True
             else:
                 if judge_front_symbol(front_symbol):
                     indent_cnt += 1
                 else:
-                    indent_cnt = former_indent
+                    if former_flag_3:
+                        former_flag_3_cnt += 1
+                        if former_indent >= 1:
+                            if former_flag_3_cnt != 1:
+                                indent_cnt = former_indent - 1
+                            else:
+                                indent_cnt = former_indent
+                        else:
+                            indent_cnt = 0
+                            former_flag_3 = False
+                    else:
+                        indent_cnt = former_indent
                 former_is_symbol = False
             new_content += "    " * indent_cnt
-            #LOGGER.info(f"former_indent:{indent_cnt,datalist[i+1:i+5]}")
             former_indent = indent_cnt
+            fomer_row_ind = i
     return new_content
 
 def load_content(content):
